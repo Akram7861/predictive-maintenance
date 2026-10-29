@@ -1,0 +1,68 @@
+name: Predictive Maintenance ML Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  train-evaluate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate registered dataset
+        run: python src/validate_data.py
+
+      - name: Prepare train and test datasets
+        run: python src/prepare_data.py
+
+      - name: Train, tune and compare models
+        run: python src/train_model.py
+
+      - name: Evaluate selected model
+        run: python src/evaluate_model.py
+
+      - name: Verify expected outputs
+        run: |
+          test -f models/best_model.pkl
+          test -f artifacts/model_comparison.csv
+          test -f artifacts/best_model_metrics.json
+          test -f artifacts/evaluation_metrics.json
+
+      - name: Publish generated model and results to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/best_model.pkl
+          git add artifacts/model_comparison.csv
+          git add artifacts/best_model_metrics.json
+          git add artifacts/best_model_params.json
+          git add artifacts/hyperparameter_tuning_results.csv
+          git add artifacts/evaluation_metrics.json
+          git add reports/figures/
+          if ! git diff --cached --quiet; then
+            git commit -m "Update predictive maintenance model and results [skip ci]"
+            git push origin HEAD:main
+          else
+            echo "No generated changes to commit."
+          fi
